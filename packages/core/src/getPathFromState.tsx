@@ -19,9 +19,9 @@ type State = NavigationState | Omit<PartialState<NavigationState>, 'stale'>;
 type StringifyConfig = Record<string, (value: any) => string>;
 
 type ConfigItem = {
-  pattern?: string;
+  pattern: string;
   stringify?: StringifyConfig;
-  screens?: Record<string, ConfigItem>;
+  screens?: Record<string, ConfigItem | ConfigItem[]>;
 };
 
 const getActiveRoute = (state: State): { name: string; params?: object } => {
@@ -81,7 +81,7 @@ export function getPathFromState<ParamList extends {}>(
   }
 
   // Create a normalized configs object which will be easier to use
-  const configs: Record<string, ConfigItem> = options?.screens
+  const configs: Record<string, ConfigItem | ConfigItem[]> = options?.screens
     ? createNormalizedConfigs(options?.screens)
     : {};
 
@@ -107,13 +107,51 @@ export function getPathFromState<ParamList extends {}>(
 
     let hasNext = true;
 
+    const findMatchingConfigItem = (
+      route: (Route<string> | Partial<Route<string>>) & { state?: State },
+      options: Record<string, ConfigItem | ConfigItem[]>
+    ) => {
+      const configItem = route.name ? options[route.name] : undefined;
+
+      if (!Array.isArray(configItem)) {
+        return configItem;
+      }
+
+      return configItem.find((subConfigItem): boolean | undefined => {
+        if (!route.path) {
+          // No path on current route, so we can't match it with any pattern
+          // Match possibly exists in nested route so match on nested route
+          const nextRoute = route.state?.routes[route.state?.index || 0];
+          return !!findMatchingConfigItem(nextRoute!, subConfigItem.screens!);
+        }
+
+        const normalizedPath = route.path.replace(/\/$/, '').replace(/^\//, '');
+
+        return (
+          !!subConfigItem.pattern &&
+          !!normalizedPath &&
+          patternToRegExp(subConfigItem.pattern).test(normalizedPath)
+        );
+      });
+    };
+
+    let configItem;
+
     while (route.name in currentOptions && hasNext) {
-      pattern = currentOptions[route.name].pattern;
+      configItem = findMatchingConfigItem(route, currentOptions);
+
+      if (configItem === undefined) {
+        throw new Error(
+          `There is no matching screen for '${route.name}'. Make sure that you have configured a screen for the route and that the route is spelled correctly.`
+        );
+      }
+
+      pattern = configItem.pattern;
 
       nestedRouteNames.push(route.name);
 
       if (route.params) {
-        const stringify = currentOptions[route.name]?.stringify;
+        const stringify = configItem?.stringify;
 
         const currentParams = Object.fromEntries(
           Object.entries(route.params).map(([key, value]) => [
@@ -148,7 +186,7 @@ export function getPathFromState<ParamList extends {}>(
       }
 
       // If there is no `screens` property or no nested state, we return pattern
-      if (!currentOptions[route.name].screens || route.state === undefined) {
+      if (!configItem.screens || route.state === undefined) {
         hasNext = false;
       } else {
         index =
@@ -157,7 +195,7 @@ export function getPathFromState<ParamList extends {}>(
             : route.state.routes.length - 1;
 
         const nextRoute = route.state.routes[index];
-        const nestedConfig = currentOptions[route.name].screens;
+        const nestedConfig = configItem.screens;
 
         // if there is config for next route name, we go deeper
         if (nestedConfig && nextRoute.name in nestedConfig) {
@@ -252,7 +290,7 @@ const joinPaths = (...paths: string[]): string =>
     .join('/');
 
 const createConfigItem = (
-  config: PathConfig<object> | string,
+  config: PathConfig<Record<string, any>> | string | undefined,
   parentPattern?: string
 ): ConfigItem => {
   if (typeof config === 'string') {
@@ -262,7 +300,7 @@ const createConfigItem = (
     return { pattern };
   }
 
-  if (config.exact && config.path === undefined) {
+  if (config?.exact && config?.path === undefined) {
     throw new Error(
       "A 'path' needs to be specified when specifying 'exact: true'. If you don't want this screen in the URL, specify it as empty string, e.g. `path: ''`."
     );
@@ -271,30 +309,51 @@ const createConfigItem = (
   // If an object is specified as the value (e.g. Foo: { ... }),
   // It can have `path` property and `screens` prop which has nested configs
   const pattern =
-    config.exact !== true
-      ? joinPaths(parentPattern || '', config.path || '')
+    config?.exact !== true
+      ? joinPaths(parentPattern || '', config?.path || '')
       : config.path || '';
 
-  const screens = config.screens
+  const screens = config?.screens
     ? createNormalizedConfigs(config.screens, pattern)
     : undefined;
 
   return {
     // Normalize pattern to remove any leading, trailing slashes, duplicate slashes etc.
     pattern: pattern?.split('/').filter(Boolean).join('/'),
-    stringify: config.stringify,
+    stringify: config?.stringify,
     screens,
   };
 };
 
 const createNormalizedConfigs = (
-  options: PathConfigMap<object>,
+  screens: PathConfigMap<Record<string, any>>,
   pattern?: string
-): Record<string, ConfigItem> =>
+): Record<string, ConfigItem | ConfigItem[]> =>
   Object.fromEntries(
-    Object.entries(options).map(([name, c]) => {
-      const result = createConfigItem(c, pattern);
+    Object.entries(screens).map(([name, config]) => {
+      // If an array is specified as the value of the key(e.g. Foo: [{ ... }, { ... }])
+      if (Array.isArray(config)) {
+        const result = config.map((c) => createConfigItem(c, pattern));
+        return [name, result];
+      }
 
+      const result = createConfigItem(config, pattern);
       return [name, result];
     })
   );
+
+export const patternToRegExp = (pattern: string): RegExp => {
+  const colonParamRegex = /:([^/]+)/g;
+  // Stuff between slashes or the end of the string
+  const valueRegex = /([^/?]+)/;
+  const _pattern = pattern
+    .replace(colonParamRegex, valueRegex.source)
+    // Replace the * with a permissive regex.
+    .replace(/[*]/g, /.*/.source);
+
+  const patternRegex = new RegExp(
+    `^${_pattern}$` // to match path exactly
+  );
+
+  return patternRegex;
+};
