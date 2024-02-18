@@ -33,6 +33,8 @@ export function validateSinglePathConfig(
     );
   }
 
+  const atPos = typeof idx === 'number' ? ` at pos ${idx}` : '';
+
   const validationErrors = Object.fromEntries(
     Object.keys(config)
       .map((key) => {
@@ -43,12 +45,12 @@ export function validateSinglePathConfig(
 
           if (typeof value !== type) {
             return [
-              `${key}${idx ? ` at pos ${idx}` : ''}`,
+              `${key}${atPos}`,
               `expected '${type}', got '${typeof value}'`,
             ];
           }
         } else {
-          return [`${key}${idx ? ` at pos ${idx}` : ''}`, `extraneous`];
+          return [`${key}${atPos}`, `extraneous`];
         }
 
         return null;
