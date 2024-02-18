@@ -2605,3 +2605,382 @@ it('throws when invalid properties are specified in the config', () => {
     `"Found invalid path 'foo/:id'. The 'path' in the top-level configuration cannot contain patterns for params."`
   );
 });
+
+it('correctly handles array config of strings in least-specific order for screen', () => {
+  const path1 = '/bar/42';
+  const path2 = '/bar/42/John';
+
+  const config = {
+    screens: {
+      Foo: {
+        screens: {
+          Bar: ['bar/:id', 'bar/:id/:name'],
+        },
+      },
+    },
+  };
+
+  const state1 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path1,
+              params: { id: '42' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const state2 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path2,
+              params: { id: '42', name: 'John' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path1, config)).toEqual(state1);
+  expect(getStateFromPath<object>(path2, config)).toEqual(state2);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state1, config), config)
+  ).toEqual(state1);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state2, config), config)
+  ).toEqual(state2);
+});
+
+it('correctly handles array config of strings in most-specific order', () => {
+  const path1 = '/bar/42';
+  const path2 = '/bar/42/John';
+
+  const config = {
+    screens: {
+      Foo: {
+        initialRouteName: 'Bar',
+        screens: {
+          Bar: ['bar/:id/:name', 'bar/:id'],
+        },
+      },
+    },
+  };
+
+  const state1 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path1,
+              params: { id: '42' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const state2 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path2,
+              params: { id: '42', name: 'John' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path1, config)).toEqual(state1);
+  expect(getStateFromPath<object>(path2, config)).toEqual(state2);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state1, config), config)
+  ).toEqual(state1);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state2, config), config)
+  ).toEqual(state2);
+});
+
+it('matches wildcard patterns at root with array', () => {
+  const path = '/test/bar/42/whatever';
+  const config = {
+    screens: {
+      404: ['*'],
+      Foo: {
+        screens: {
+          Bar: {
+            path: '/bar/:id/',
+          },
+        },
+      },
+    },
+  };
+
+  const state = {
+    routes: [{ name: '404', path }],
+  };
+
+  expect(getStateFromPath<object>(path, config)).toEqual(state);
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state, config), config)
+  ).toEqual(changePath(state, '/404'));
+});
+
+it('correctly handles array config of strings with wild card', () => {
+  const path1 = '/bar/42/John';
+  const path2 = '/path/to/nowhere';
+
+  const config = {
+    screens: {
+      Foo: {
+        initialRouteName: 'Bar',
+        screens: {
+          Bar: ['bar/:id/:name', '*'],
+        },
+      },
+    },
+  };
+
+  const state1 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path1,
+              params: { id: '42', name: 'John' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const state2 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path2,
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path1, config)).toEqual(state1);
+  expect(getStateFromPath<object>(path2, config)).toEqual(state2);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state1, config), config)
+  ).toEqual(state1);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state2, config), config)
+  ).toEqual(changePath(state2, '/Bar'));
+});
+
+it('handles non-string array config', () => {
+  const path1 = '/foo';
+  const path2 = '/bar/42/John';
+
+  const config = {
+    screens: {
+      Foo: [
+        {
+          initialRouteName: 'Bar',
+          screens: {
+            Bar: ['bar/:id/:name'],
+          },
+        },
+        'foo',
+      ],
+    },
+  };
+
+  const state1 = {
+    routes: [
+      {
+        name: 'Foo',
+        path: path1,
+      },
+    ],
+  };
+
+  const state2 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              path: path2,
+              params: { id: '42', name: 'John' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path1, config)).toEqual(state1);
+  expect(getStateFromPath<object>(path2, config)).toEqual(state2);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state1, config), config)
+  ).toEqual(state1);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state2, config), config)
+  ).toEqual(state2);
+});
+
+it('handles multiple configs for screens', () => {
+  const path1 = '/baz/42/John';
+  const path2 = '/bar/42/John';
+
+  const config = {
+    screens: {
+      Foo: [
+        {
+          initialRouteName: 'Baz',
+          screens: {
+            Baz: ['baz/:id/:name'],
+          },
+        },
+        {
+          initialRouteName: 'Bar',
+          screens: {
+            Bar: ['bar/:id/:name'],
+          },
+        },
+        'foo',
+      ],
+    },
+  };
+
+  const state1 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          routes: [
+            {
+              name: 'Baz',
+              path: path1,
+              params: { id: '42', name: 'John' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  const state2 = {
+    routes: [
+      {
+        name: 'Foo',
+        state: {
+          index: 1,
+          routes: [
+            {
+              name: 'Baz',
+            },
+            {
+              name: 'Bar',
+              path: path2,
+              params: { id: '42', name: 'John' },
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path1, config)).toEqual(state1);
+  expect(getStateFromPath<object>(path2, config)).toEqual(state2);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state1, config), config)
+  ).toEqual(state1);
+
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state2, config), config)
+  ).toEqual(state2);
+});
+
+it('throws when invalid properties are specified in the config (array)', () => {
+  expect(() =>
+    getStateFromPath<object>('', {
+      screens: { Foo: ['foo', 42] },
+    } as any)
+  ).toThrowErrorMatchingInlineSnapshot(
+    `"Expected the configuration to be an object, but got 42."`
+  );
+
+  expect(() =>
+    getStateFromPath<object>('', {
+      screens: {
+        Foo: 'foo',
+        Bar: {
+          path: 'bar',
+        },
+        Baz: [
+          {
+            Qux: {
+              path: 'qux',
+            },
+          },
+        ],
+      },
+    } as any)
+  ).toThrowErrorMatchingInlineSnapshot(`
+"Found invalid properties in the configuration:
+- Qux at pos 0 (extraneous)
+
+You can only specify the following properties:
+- path (string)
+- initialRouteName (string)
+- screens (object)
+- exact (boolean)
+- stringify (object)
+- parse (object)
+
+If you want to specify configuration for screens, you need to specify them under a 'screens' property.
+
+See https://reactnavigation.org/docs/configuring-links for more details on how to specify a linking configuration."
+`);
+});
