@@ -893,6 +893,9 @@ export type PathConfigMap<ParamList extends {}> = {
   [RouteName in keyof ParamList]?: NonNullable<
     ParamList[RouteName]
   > extends NavigatorScreenParams<infer T extends {}>
-    ? string | PathConfig<T>
-    : string | Omit<PathConfig<{}>, 'screens' | 'initialRouteName'>;
+    ? MaybeArray<string | PathConfig<T>>
+    : MaybeArray<string | Omit<PathConfig<{}>, 'screens' | 'initialRouteName'>>;
 };
+
+type MaybeArray<T> = T | T[];
+export type DeArray<T> = T extends (infer Q)[] ? Q : T;

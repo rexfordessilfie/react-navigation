@@ -3,7 +3,15 @@ const formatToList = (items: Record<string, string>) =>
     .map(([key, value]) => `- ${key} (${value})`)
     .join('\n');
 
-export function validatePathConfig(config: unknown, root = true) {
+export function validateSinglePathConfig(
+  config: unknown,
+  root = true,
+  idx?: number
+) {
+  if (typeof config === 'string') {
+    return;
+  }
+
   const validation = {
     path: 'string',
     initialRouteName: 'string',
@@ -34,10 +42,13 @@ export function validatePathConfig(config: unknown, root = true) {
           const value = config[key];
 
           if (typeof value !== type) {
-            return [key, `expected '${type}', got '${typeof value}'`];
+            return [
+              `${key}${idx ? ` at pos ${idx}` : ''}`,
+              `expected '${type}', got '${typeof value}'`,
+            ];
           }
         } else {
-          return [key, 'extraneous'];
+          return [`${key}${idx ? ` at pos ${idx}` : ''}`, `extraneous`];
         }
 
         return null;
@@ -68,9 +79,15 @@ export function validatePathConfig(config: unknown, root = true) {
 
   if ('screens' in config && config.screens) {
     Object.entries(config.screens).forEach(([_, value]) => {
-      if (typeof value !== 'string') {
-        validatePathConfig(value, false);
-      }
+      validatePathConfig(value, false);
     });
+  }
+}
+
+export function validatePathConfig(config: unknown, root = true) {
+  if (Array.isArray(config)) {
+    config.forEach((c, i) => validateSinglePathConfig(c, root, i));
+  } else {
+    validateSinglePathConfig(config, root);
   }
 }
