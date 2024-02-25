@@ -899,6 +899,11 @@ export type PathConfig<ParamList extends {}> = {
   getStateForRouteNamesChange?: (
     state: NavigationState
   ) => PartialState<NavigationState> | undefined;
+
+  /**
+   * User-provided metadata for this path
+   */
+  meta?: any;
 };
 
 export type PathConfigMap<ParamList extends {}> = {

@@ -79,6 +79,11 @@ export type Route<
    * Usually present when the screen was opened from a deep link.
    */
   path?: string;
+
+  /**
+   * User-provided metadata for the route
+   */
+  meta?: any;
 }> &
   (undefined extends Params
     ? Readonly<{

@@ -2551,20 +2551,21 @@ it('throws when invalid properties are specified in the config', () => {
       },
     } as any)
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Found invalid properties in the configuration:
-    - path (expected 'string', got 'number')
-    - Foo (extraneous)
-    - Bar (extraneous)
+"Found invalid properties in the configuration:
+- path (expected 'string', got 'number')
+- Foo (extraneous)
+- Bar (extraneous)
 
-    You can only specify the following properties:
-    - path (string)
-    - initialRouteName (string)
-    - screens (object)
+You can only specify the following properties:
+- path (string)
+- initialRouteName (string)
+- screens (object)
+- meta (any)
 
-    If you want to specify configuration for screens, you need to specify them under a 'screens' property.
+If you want to specify configuration for screens, you need to specify them under a 'screens' property.
 
-    See https://reactnavigation.org/docs/configuring-links for more details on how to specify a linking configuration."
-  `);
+See https://reactnavigation.org/docs/configuring-links for more details on how to specify a linking configuration."
+`);
 
   expect(() =>
     getStateFromPath<object>('', {
@@ -2581,21 +2582,22 @@ it('throws when invalid properties are specified in the config', () => {
       },
     } as any)
   ).toThrowErrorMatchingInlineSnapshot(`
-    "Found invalid properties in the configuration:
-    - Qux (extraneous)
+"Found invalid properties in the configuration:
+- Qux (extraneous)
 
-    You can only specify the following properties:
-    - path (string)
-    - initialRouteName (string)
-    - screens (object)
-    - exact (boolean)
-    - stringify (object)
-    - parse (object)
+You can only specify the following properties:
+- path (string)
+- initialRouteName (string)
+- screens (object)
+- meta (any)
+- exact (boolean)
+- stringify (object)
+- parse (object)
 
-    If you want to specify configuration for screens, you need to specify them under a 'screens' property.
+If you want to specify configuration for screens, you need to specify them under a 'screens' property.
 
-    See https://reactnavigation.org/docs/configuring-links for more details on how to specify a linking configuration."
-  `);
+See https://reactnavigation.org/docs/configuring-links for more details on how to specify a linking configuration."
+`);
 
   expect(() =>
     getStateFromPath<object>('', {
@@ -2604,4 +2606,73 @@ it('throws when invalid properties are specified in the config', () => {
   ).toThrowErrorMatchingInlineSnapshot(
     `"Found invalid path 'foo/:id'. The 'path' in the top-level configuration cannot contain patterns for params."`
   );
+});
+
+it('includes meta in the returned state', () => {
+  const path = '/foo/42';
+  const config = {
+    screens: {
+      Foo: {
+        path: 'foo/:id',
+        meta: 'my meta',
+      },
+    },
+  };
+
+  const state = {
+    routes: [
+      {
+        name: 'Foo',
+        params: { id: '42' },
+        path,
+        meta: 'my meta',
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path, config)).toEqual(state);
+  expect(
+    getStateFromPath<object>(getPathFromState<object>(state, config), config)
+  ).toEqual(changePath(state, '/foo/42'));
+});
+
+it('includes meta in the returned state for nested paths', () => {
+  const path = '/foo/42/bar/43';
+
+  const config = {
+    screens: {
+      Foo: {
+        path: 'foo/:id',
+        meta: 'my meta',
+        screens: {
+          Bar: {
+            path: 'bar/:ix',
+            meta: 'my meta 2',
+          },
+        },
+      },
+    },
+  };
+
+  const state = {
+    routes: [
+      {
+        name: 'Foo',
+        params: { id: '42' },
+        meta: 'my meta',
+        state: {
+          routes: [
+            {
+              name: 'Bar',
+              params: { ix: '43' },
+              path,
+              meta: 'my meta 2',
+            },
+          ],
+        },
+      },
+    ],
+  };
+
+  expect(getStateFromPath<object>(path, config)).toEqual(state);
 });

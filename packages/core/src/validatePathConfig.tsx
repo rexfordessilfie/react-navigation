@@ -8,6 +8,7 @@ export function validatePathConfig(config: unknown, root = true) {
     path: 'string',
     initialRouteName: 'string',
     screens: 'object',
+    meta: 'any',
     ...(root
       ? null
       : {
@@ -32,6 +33,8 @@ export function validatePathConfig(config: unknown, root = true) {
           const type = validation[key as keyof typeof validation];
           // @ts-expect-error: we know the key exists
           const value = config[key];
+
+          if (type === 'any') return null;
 
           if (typeof value !== type) {
             return [key, `expected '${type}', got '${typeof value}'`];

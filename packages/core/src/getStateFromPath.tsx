@@ -25,6 +25,7 @@ type RouteConfig = {
   pattern: string;
   routeNames: string[];
   parse?: ParseConfig;
+  meta?: string;
 };
 
 type InitialRouteConfig = {
@@ -40,6 +41,7 @@ type ParsedRoute = {
   name: string;
   path?: string;
   params?: Record<string, any> | undefined;
+  meta?: any;
 };
 
 /**
@@ -122,6 +124,64 @@ export function getStateFromPath<ParamList extends {}>(
     return undefined;
   }
 
+  const configs = getNormalizedConfigs(screens, initialRoutes);
+
+  if (remaining === '/') {
+    // We need to add special handling of empty path so navigation to empty path also works
+    // When handling empty path, we should only look at the root level config
+    const match = configs.find(
+      (config) =>
+        config.path === '' &&
+        config.routeNames.every(
+          // Make sure that none of the parent configs have a non-empty path defined
+          (name) => !configs.find((c) => c.screen === name)?.path
+        )
+    );
+
+    if (match) {
+      return createNestedStateObject(
+        path,
+        match.routeNames.map((name) => ({ name })),
+        initialRoutes,
+        configs
+      );
+    }
+
+    return undefined;
+  }
+
+  let result: PartialState<NavigationState> | undefined;
+  let current: PartialState<NavigationState> | undefined;
+
+  // We match the whole path against the regex instead of segments
+  // This makes sure matches such as wildcard will catch any unmatched routes, even if nested
+  const { routes, remainingPath } = matchAgainstConfigs(
+    remaining,
+    configs.map((c) => ({
+      ...c,
+      // Add `$` to the regex to make sure it matches till end of the path and not just beginning
+      regex: c.regex ? new RegExp(c.regex.source + '$') : undefined,
+    }))
+  );
+
+  if (routes !== undefined) {
+    // This will always be empty if full path matched
+    current = createNestedStateObject(path, routes, initialRoutes, configs);
+    remaining = remainingPath;
+    result = current;
+  }
+
+  if (current == null || result == null) {
+    return undefined;
+  }
+
+  return result;
+}
+
+function getNormalizedConfigs<ParamList extends {}>(
+  screens: PathConfigMap<ParamList> = {},
+  initialRoutes: InitialRouteConfig[] = []
+) {
   // Create a normalized configs array which will be easier to use
   const configs = ([] as RouteConfig[])
     .concat(
@@ -215,56 +275,7 @@ export function getStateFromPath<ParamList extends {}>(
     });
   }, {});
 
-  if (remaining === '/') {
-    // We need to add special handling of empty path so navigation to empty path also works
-    // When handling empty path, we should only look at the root level config
-    const match = configs.find(
-      (config) =>
-        config.path === '' &&
-        config.routeNames.every(
-          // Make sure that none of the parent configs have a non-empty path defined
-          (name) => !configs.find((c) => c.screen === name)?.path
-        )
-    );
-
-    if (match) {
-      return createNestedStateObject(
-        path,
-        match.routeNames.map((name) => ({ name })),
-        initialRoutes,
-        configs
-      );
-    }
-
-    return undefined;
-  }
-
-  let result: PartialState<NavigationState> | undefined;
-  let current: PartialState<NavigationState> | undefined;
-
-  // We match the whole path against the regex instead of segments
-  // This makes sure matches such as wildcard will catch any unmatched routes, even if nested
-  const { routes, remainingPath } = matchAgainstConfigs(
-    remaining,
-    configs.map((c) => ({
-      ...c,
-      // Add `$` to the regex to make sure it matches till end of the path and not just beginning
-      regex: c.regex ? new RegExp(c.regex.source + '$') : undefined,
-    }))
-  );
-
-  if (routes !== undefined) {
-    // This will always be empty if full path matched
-    current = createNestedStateObject(path, routes, initialRoutes, configs);
-    remaining = remainingPath;
-    result = current;
-  }
-
-  if (current == null || result == null) {
-    return undefined;
-  }
-
-  return result;
+  return configs;
 }
 
 const joinPaths = (...paths: string[]): string =>
@@ -316,10 +327,10 @@ const matchAgainstConfigs = (remaining: string, configs: RouteConfig[]) => {
           }, {});
 
         if (params && Object.keys(params).length) {
-          return { name, params };
+          return { name, params, meta: config?.meta };
         }
 
-        return { name };
+        return { name, meta: config?.meta };
       });
 
       remainingPath = remainingPath.replace(match[1], '');
@@ -333,7 +344,7 @@ const matchAgainstConfigs = (remaining: string, configs: RouteConfig[]) => {
 
 const createNormalizedConfigs = (
   screen: string,
-  routeConfig: PathConfigMap<object>,
+  routeConfig: PathConfigMap<Record<string, any>>,
   routeNames: string[] = [],
   initials: InitialRouteConfig[],
   parentScreens: string[],
@@ -345,7 +356,6 @@ const createNormalizedConfigs = (
 
   parentScreens.push(screen);
 
-  // @ts-expect-error: we can't strongly typecheck this for now
   const config = routeConfig[screen];
 
   if (typeof config === 'string') {
@@ -377,12 +387,13 @@ const createNormalizedConfigs = (
           routeNames,
           pattern!,
           config.path,
-          config.parse
+          config.parse,
+          config.meta
         )
       );
     }
 
-    if (config.screens) {
+    if ('screens' in config && config.screens) {
       // property `initialRouteName` without `screens` has no purpose
       if (config.initialRouteName) {
         initials.push({
@@ -394,7 +405,7 @@ const createNormalizedConfigs = (
       Object.keys(config.screens).forEach((nestedConfig) => {
         const result = createNormalizedConfigs(
           nestedConfig,
-          config.screens as PathConfigMap<object>,
+          config.screens || {},
           routeNames,
           initials,
           [...parentScreens],
@@ -416,7 +427,8 @@ const createConfigItem = (
   routeNames: string[],
   pattern: string,
   path: string,
-  parse?: ParseConfig
+  parse?: ParseConfig,
+  meta?: string
 ): RouteConfig => {
   // Normalize pattern to remove any leading, trailing slashes, duplicate slashes etc.
   pattern = pattern.split('/').filter(Boolean).join('/');
@@ -444,6 +456,7 @@ const createConfigItem = (
     // The routeNames array is mutated, so copy it to keep the current state
     routeNames: [...routeNames],
     parse,
+    meta,
   };
 };
 
@@ -595,3 +608,35 @@ const parseQueryParams = (
 
   return Object.keys(params).length ? params : undefined;
 };
+
+/**
+ * Utility to return a list of paths and the route names they match to.
+ * @param options
+ * @returns
+ */
+export function explainPaths<ParamList extends Record<string, any>>(
+  options?: Options<ParamList>
+) {
+  if (options) {
+    validatePathConfig(options);
+  }
+
+  const initialRoutes: InitialRouteConfig[] = [];
+
+  if (options?.initialRouteName) {
+    initialRoutes.push({
+      initialRouteName: options.initialRouteName,
+      parentScreens: [],
+    });
+  }
+
+  const screens = options?.screens;
+
+  const configs = getNormalizedConfigs(screens, initialRoutes);
+
+  return configs.map(({ path, routeNames, meta }) => ({
+    path: '/' + path.replace(/^\//, ''),
+    screens: routeNames,
+    meta,
+  }));
+}
